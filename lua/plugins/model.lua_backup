@@ -1,0 +1,623 @@
+local plugin = {'gsuuon/model.nvim'}
+
+-- Don't need these if lazy = false
+plugin.cmd = { 
+    'M',
+    'Model',
+    'Mchat',
+}
+
+function plugin.init()
+    vim.filetype.add({
+        extension = {
+            mchat = 'mchat',
+        }
+    })
+end
+
+plugin.ft = 'mchat'
+
+plugin.keys = {
+    {'<C-m>d', ':Mdelete<cr>', mode = 'n'},
+    {'<C-m>s', ':Mselect<cr>', mode = 'n'},
+    {'<C-m><space>', ':Mchat<cr>', mode = 'n' }
+}
+
+
+print("aSA")
+if vim.fn.hostname() == "rotx270" then
+print("arA")
+-- On Thinkpad Laptop
+--    print("rotx270")
+-- To override defaults add a config field and call setup()
+function plugin.config()
+
+    local ollama = require('model.providers.ollama')
+
+    local util = require('model.util')
+    local segment = require('model.util.segment')
+    local qflist = require('model.util.qflist')
+    local modeAPPEND = require('model').REPLACE
+    local modeREPLACE = require('model').REPLACE
+    local modeBUFFER = require('model').BUFFER 
+    local modeINSERT = require('model').INSERT
+    local modeINSERT_OR_REPLACE = require('model').INSERT_OR_REPLACE
+
+    local llama2_fmt = require('model.format.llama2')
+    local starling_fmt = require('model.format.starling')
+    local zephyr_fmt = require('model.format.zephyr')
+
+    local function input_if_selection(input, context)
+        return context.selection and input or ''
+    end
+
+    local function match_llm_directive(text)
+        local before, _, after = text:match("(.-)(<llm:)%s?(.*)$")
+        if not before and not after then
+            before, after = text, ""
+        elseif not before then
+            before = ""
+        elseif not after then
+            after = ""
+        end
+        return before, after
+    end
+
+    local instruct_code = 'You are a highly competent programmer. Include only valid code in your response.'
+
+        require('model').setup({
+            prompts = {
+                instruct = {
+                    provider = ollama,
+                    params = {
+                        model = 'deepseek-coder:1.3b-instruct'
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = 'You are an AI programming assistant, utilizing the Deepseek Coder model, developed by Deepseek Company, and you only answer questions related to computer science. For politically sensitive questions, security and privacy issues, and other non-computer science questions, you will refuse to answer.'
+                                .. '### Instruction:'
+                                .. input
+                                .. '### Response:'
+                        }
+                    end
+                },
+                code = {
+                    provider = ollama,
+                    params = {
+                        model = 'openchat',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = 'GPT4 Correct User: '
+                                .. input
+                                .. '<|end_of_turn|>GPT4 Correct Assistant: ',
+                        }
+                    end,
+                },
+                math = {
+                    provider = ollama,
+                    params = {
+                        model = 'openchat',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = 'Math Correct User: '
+                                    .. input 
+                                    .. '<|end_of_turn|>Math Correct Assistant:'
+                        }
+                    end,
+                },
+                commit_message = {
+                    provider = ollama,
+                    params = {
+                        model = 'openchat',
+                    },
+                    builder = function()
+                        local git_diff = vim.fn.system {'git', 'diff', '--staged'}
+                        return {
+                            messages = {
+                                {
+                                    role = 'system',
+                                    content = 'Write a short commit message according to the Conventional Commits specification for the following git diff: ```\n' .. git_diff .. '\n```'
+                                }
+                            }
+                        }
+                    end,
+                },
+                ['to code'] = {
+                    provider = ollama,
+                    params = {
+                        model = 'openchat',
+                    },
+                    mode = modeREPLACE,
+                    builder = function(input)
+                        local text, directive = match_llm_directive(input)
+
+                        local msgs = {
+                            {
+                                role = 'system',
+                                content = instruct_code,
+                            },
+                            {
+                                role = 'user',
+                                content = text,
+                            }
+                        }
+
+                        if directive then
+                            table.insert(msgs, { role = 'user', content = directive })
+                        end
+
+                        return {
+                            messages = msgs
+                        }
+                    end,
+                },
+                deepseekcoder = {
+                    provider = ollama,
+                    params = {
+                        model = 'deepseek-coder:latest',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = 'You are an AI programming assistant, utilizing the Deepseek Coder model, developed by Deepseek Company, and you only answer questions related to computer science. For politically sensitive questions, security and privacy issues, and other non-computer science questions, you will refuse to answer.'
+                                .. '### Instruction:'
+                                .. input
+                                .. '### Response:',
+                        }
+                    end
+                },
+                deepseekcoder13b = {
+                    provider = ollama,
+                    params = {
+                        model = 'deepseek-coder:1.3b-instruct',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = 'You are an AI programming assistant, utilizing the Deepseek Coder model, developed by Deepseek Company, and you only answer questions related to computer science. For politically sensitive questions, security and privacy issues, and other non-computer science questions, you will refuse to answer.'
+                                .. '### Instruction:'
+                                .. input
+                                .. '### Response:',
+                        }
+                    end,
+                },
+                deepseekcoder67b = {
+                    provider = ollama,
+                    params = {
+                        model = 'deepseek-coder:6.7b',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = 'You are an AI programming assistant, utilizing the Deepseek Coder model, developed by Deepseek Company, and you only answer questions related to computer science. For politically sensitive questions, security and privacy issues, and other non-computer science questions, you will refuse to answer.'
+                                .. '### Instruction:'
+                                .. input
+                                .. '### Response:',
+                        }
+                    end,
+                },
+                orcamini = {
+                    provider = ollama,
+                    params = {
+                        model = 'orca-mini:latest',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = ' [INST] <<SYS>>'
+                                .. 'You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don\'t know the answer to a question, please don\'t share false information.'
+                                .. '<</SYS>>'
+                                .. input
+                                .. '[/INST]',
+                        }
+                    end,
+                },
+                phi = {
+                    provider = ollama,
+                    params = {
+                        model = 'phi:latest',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = ' [INST] <<SYS>>'
+                                .. 'You are a helpful and honest assistant. Always answer as helpfully as possible. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don\'t know the answer to a question, please don\'t share false information.'
+                                .. '<</SYS>>'
+                                .. input
+                                .. '[/INST]',
+                        }
+                    end,
+                },
+                tinyllama = {
+                    provider = ollama,
+                    params = {
+                        model = 'tinyllama',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = '<|system|>'
+                                .. 'You are a helpful and honest assistant. Always answer as helpfully as possible. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don\'t know the answer to a question, please don\'t share false information.</s>'
+                                .. '<|user|>'
+                                .. input
+                                .. '</s>'
+                                .. '<|assistant|>',
+                        }
+                    end,
+                },
+                wizardmath = {
+                    provider = ollama,
+                    params = {
+                        model = 'wizard-math',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = 'GPT4 Correct User: '
+                                .. input
+                                .. '<|end_of_turn|>GPT4 Correct Assistant: ',
+                        }
+                    end,
+                },
+            },
+            chats = {
+                openchat = {
+            -- ollama openchat example
+-- {"timestamp":1709063411,"level":"VERBOSE","function":"update_slots","line":1715,"message":"prompt ingested","n_past":79,"cached":"GPT4 Correct User: helloGPT4 Correct Assistant: Hello! How can I help you today?GPT4 Correct User: how are you today?GPT4 Correct Assistant: I'm doing well, thank you for asking! How about you? If you have any questions or need assistance, feel free to ask.","to_eval":"GPT4 Correct User: okie dokieGPT4 Correct Assistant:"}
+            -- current starling_fmt.chat example
+-- {"timestamp":1709063610,"level":"VERBOSE","function":"update_slots","line":1715,"message":"prompt ingested","n_past":76,"cached":" GPT4 Correct User: You are a helpful assistant\nhelloGPT4 Correct Assistant:¡Hola! Soy un asistente virtual y estoy aquí para ayudarte. ¿En qué puedo ayudarte hoy?GPT4 Correct User:how are you today?GPT4 Correct Assistant:","to_eval":"¡Estoy bien, gracias por preguntar! Siento que no pueda hacerlo de verdad, ya que soy un modelo de lenguaje y no tengo emociones como las personas. Pero estoy aquí para ayudarte en lo que necesites. ¿En qué te puedo apoyar hoy?GPT4 Correct User:okie dokieGPT4 Correct Assistant: "}
+                    provider = ollama,
+                    params = {
+                        model = 'openchat',
+                    },
+                    system = 'You are a helpful assistant',
+                    create = input_if_selection,
+                    run = starling_fmt.chat,
+                },
+                phichat = {
+            -- ollama phi example
+-- {"timestamp":1709063889,"level":"VERBOSE","function":"update_slots","line":1715,"message":"prompt ingested","n_past":70,"cached":
+-- "System: A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful answers to the user's questions.\nUser: hello\nAssistant: Hello, how can I assist you today?\n\nUser: how are you doing?\nAssistant: I'm doing well, thank you for asking. How may I help you? ","to_eval":"\n\n\nUser: okie dokie\nAssistant:"}
+            -- current phicat example
+-- {"timestamp":1709063777,"level":"VERBOSE","function":"update_slots","line":1715,"message":"prompt ingested","n_past":58,"cached":
+-- "System:\nA chat between a curious user and an artificial intelligence assistant. The assistant gives helpful answers to the user's questions.\n\n### Assistant:\nhello\n\n### Assistant:\nWelcome, what can I help you with today?\n\n\n\n### Assistant:\nhow are you?","to_eval":"\n\n### Assistant:\nI'm fine, thank you for asking. How about you? \n\n\n\n### Assistant:\nokie dokie### Assistant:\n"}
+-- {"timestamp":1709064505,"level":"VERBOSE","function":"update_slots","line":1715,"message":"prompt ingested","n_past":0,"cached":"","to_eval":
+-- "System: A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful answers to the user's questions.\nUser Message: hello\nAssistant:"}
+                    provider = ollama,
+                    params = {
+                        model = 'phi:latest',
+                    },
+                    system = 'A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful answers to the user\'s questions.',
+                    create = function(input, ctx)
+                      return ctx.selection and input or ''
+                    end,
+                    run = function(messages, config)
+                      local prompt = 'System: ' .. config.system
+
+                      for _, msg in ipairs(messages) do
+                        prompt = prompt
+                          .. '\n'
+                          .. (msg.role == 'user' and 'User Message' or 'Assistant')
+                          .. ': '
+                          .. msg.content
+                      end
+
+                      prompt = prompt .. '\nAssistant:'
+                    return {
+                        prompt = prompt,
+                        }
+                    end,
+                },
+            },
+        })
+    end
+    else
+-- To override defaults add a config field and call setup()
+function plugin.config()
+
+    local ollama = require('model.providers.ollama')
+
+    local util = require('model.util')
+    local segment = require('model.util.segment')
+    local qflist = require('model.util.qflist')
+    local modeAPPEND = require('model').REPLACE
+    local modeREPLACE = require('model').REPLACE
+    local modeBUFFER = require('model').BUFFER 
+    local modeINSERT = require('model').INSERT
+    local modeINSERT_OR_REPLACE = require('model').INSERT_OR_REPLACE
+
+    local llama2_fmt = require('model.format.llama2')
+    local starling_fmt = require('model.format.starling')
+    local zephyr_fmt = require('model.format.zephyr')
+
+    local function input_if_selection(input, context)
+        return context.selection and input or ''
+    end
+
+    local function match_llm_directive(text)
+        local before, _, after = text:match("(.-)(<llm:)%s?(.*)$")
+        if not before and not after then
+            before, after = text, ""
+        elseif not before then
+            before = ""
+        elseif not after then
+            after = ""
+        end
+        return before, after
+    end
+
+    local instruct_code = 'You are a highly competent programmer. Include only valid code in your response.'
+
+        -- On Desktop
+        print("DT")
+        require('model').setup({
+            prompts = {
+                instruct = {
+                    provider = ollama,
+                    params = {
+                        model = 'deepseek-coder:33b-instruct'
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = 'You are an AI programming assistant, utilizing the Deepseek Coder model, developed by Deepseek Company, and you only answer questions related to computer science. For politically sensitive questions, security and privacy issues, and other non-computer science questions, you will refuse to answer.'
+                                .. '### Instruction:'
+                                .. input
+                                .. '### Response:'
+                        }
+                    end
+                },
+                code = {
+                    provider = ollama,
+                    params = {
+                        model = 'openchat',
+                    },
+                    builder = function(input)
+                        return {
+                            messages = {
+                                {
+                                    role = 'system',
+                                    content = instruct_code,
+                                },
+                                {
+                                    role = 'user',
+                                    content = input,
+                                }
+                            }
+                        }
+                    end,
+                },
+                commit_message = {
+                    provider = ollama,
+                    params = {
+                        model = 'openchat',
+                    },
+                    builder = function()
+                        local git_diff = vim.fn.system {'git', 'diff', '--staged'}
+                        return {
+                            messages = {
+                                {
+                                    role = 'system',
+                                    content = 'Write a short commit message according to the Conventional Commits specification for the following git diff: ```\n' .. git_diff .. '\n```'
+                                }
+                            }
+                        }
+                    end,
+                },
+                ['to code'] = {
+                    provider = ollama,
+                    params = {
+                        model = 'openchat',
+                    },
+                    mode = modeREPLACE,
+                    builder = function(input)
+                        local text, directive = match_llm_directive(input)
+
+                        local msgs = {
+                            {
+                                role = 'system',
+                                content = instruct_code,
+                            },
+                            {
+                                role = 'user',
+                                content = text,
+                            }
+                        }
+
+                        if directive then
+                            table.insert(msgs, { role = 'user', content = directive })
+                        end
+
+                        return {
+                            messages = msgs
+                        }
+                    end,
+                },
+                codellama = {
+                    provider = ollama,
+                    params = {
+                        model = 'codellama',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = 'GPT4 Correct User: '
+                                .. input
+                                .. '<|end_of_turn|>GPT4 Correct Assistant: ',
+                        }
+                    end
+                },
+                deepseekcoder = {
+                    provider = ollama,
+                    params = {
+                        model = 'deepseek-coder',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = 'You are an AI programming assistant, utilizing the Deepseek Coder model, developed by Deepseek Company, and you only answer questions related to computer science. For politically sensitive questions, security and privacy issues, and other non-computer science questions, you will refuse to answer.'
+                                .. '### Instruction:'
+                                .. input
+                                .. '### Response:',
+                        }
+                    end
+                },
+                deepseekcoder33b = {
+                    provider = ollama,
+                    params = {
+                        model = 'deepseek-coder:33b-instruct',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = 'You are an AI programming assistant, utilizing the Deepseek Coder model, developed by Deepseek Company, and you only answer questions related to computer science. For politically sensitive questions, security and privacy issues, and other non-computer science questions, you will refuse to answer.'
+                                .. '### Instruction:'
+                                .. input
+                                .. '### Response:',
+                        }
+                    end,
+                },
+                llama2 = {
+                    provider = ollama,
+                    params = {
+                        model = 'llama2',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = ' [INST] <<SYS>>'
+                                .. 'You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don\'t know the answer to a question, please don\'t share false information.'
+                                .. '<</SYS>>'
+                                .. input
+                                .. '[/INST]',
+                        }
+                    end,
+                },
+                llama2uncensored = {
+                    provider = ollama,
+                    params = {
+                        model = 'llama2-uncensored',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = ' [INST] <<SYS>>'
+                                .. 'You are a helpful and honest assistant. Always answer as helpfully as possible. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don\'t know the answer to a question, please don\'t share false information.'
+                                .. '<</SYS>>'
+                                .. input
+                                .. '[/INST]',
+                        }
+                    end,
+                },
+                tinyllama = {
+                    provider = ollama,
+                    params = {
+                        model = 'tinyllama',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = '<|system|>'
+                                .. 'You are a helpful and honest assistant. Always answer as helpfully as possible. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don\'t know the answer to a question, please don\'t share false information.</s>'
+                                .. '<|user|>'
+                                .. input
+                                .. '</s>'
+                                .. '<|assistant|>',
+                        }
+                    end,
+                },
+                wizardcoder = {
+                    provider = ollama,
+                    params = {
+                        model = 'wizardcoder',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = 'GPT4 Correct User: '
+                                .. input
+                                .. '<|end_of_turn|>GPT4 Correct Assistant: ',
+                        }
+                    end,
+                },
+                wizardmath = {
+                    provider = ollama,
+                    params = {
+                        model = 'wizard-math',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = 'GPT4 Correct User: '
+                                .. input
+                                .. '<|end_of_turn|>GPT4 Correct Assistant: ',
+                        }
+                    end,
+                },
+                mistral = {
+                    provider = ollama,
+                    params = {
+                        model = 'mistral',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = 'GPT4 Correct User: '
+                                .. input
+                                .. '<|end_of_turn|>GPT4 Correct Assistant: ',
+                        }
+                    end,
+                },
+                starling = {
+                    provider = ollama,
+                    params = {
+                        model = 'starling-lm',
+                    },
+                    builder = function(input)
+                        return {
+                            prompt = 'GPT4 Correct User: '
+                                .. input
+                                .. '<|end_of_turn|>GPT4 Correct Assistant: ',
+                        }
+                    end,
+                },
+            },
+            chats = {
+                deepseekllm = {
+                    provider = ollama,
+                    params = {
+                        model = 'deepseek-llm:7b-chat',
+                    },
+                    system = 'You are a helpful assistant',
+                    create = input_if_selection,
+                    run = starling_fmt.chat,
+                },
+                openchat = {
+                    provider = ollama,
+                    params = {
+                        model = 'openchat',
+                    },
+                    system = 'You are a helpful assistant',
+                    create = input_if_selection,
+                    run = starling_fmt.chat,
+                },
+                llama2uncensored = {
+                    provider = ollama,
+                    params = {
+                        model = 'llama2-uncensored',
+                    },
+                    system = 'You are a helpful assistant',
+                    create = function(input, ctx)
+                      return ctx.selection and input or ''
+                    end,
+                    run = function(messages, config)
+                      local prompt = '### System Prompt\n' .. config.system
+
+                      for _, msg in ipairs(messages) do
+                        prompt = prompt
+                          .. '\n\n### '
+                          .. (msg.role == 'user' and 'User Message' or 'Assistant')
+                          .. '\n'
+                          .. msg.content
+                      end
+
+                      prompt = prompt .. '### Assistant\n'
+                    return {
+                        prompt = prompt,
+                        }
+                    end,
+                },
+            },
+        })
+    end
+end
+
+return plugin
+
+
+
